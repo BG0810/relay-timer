@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Relay Timer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a22;
+    --surface2: #24242f;
+    --accent: #7c6aff;
+    --accent2: #ff6a9b;
+    --text: #f0f0f5;
+    --text2: #8888aa;
+    --active-bg: #1e1a3a;
+    --active-border: #7c6aff;
+    --danger: #ff4466;
+    --success: #44ffaa;
+    --radius: 16px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  body {
+    max-width: 430px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  #total-time {
+    font-size: 13px;
+    color: var(--text2);
+    background: var(--surface);
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  /* ── Active display ── */
+  #active-display {
+    margin: 8px 16px 0;
+    background: var(--active-bg);
+    border: 1.5px solid var(--active-border);
+    border-radius: var(--radius);
+    padding: 24px 16px 20px;
+    text-align: center;
+    display: none;
+  }
+
+  #active-display.visible { display: block; }
+
+  #active-name {
+    font-size: 14px;
+    color: var(--text2);
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  #active-time {
+    font-size: clamp(44px, 13vw, 72px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  #active-time.urgent { color: var(--accent2); }
+
+  #progress-bar-wrap {
+    margin-top: 16px;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    transition: width 0.5s linear;
+    width: 100%;
+  }
+
+  #queue-info {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  /* ── Controls ── */
+  #controls {
+    display: flex;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .btn:active { opacity: 0.75; transform: scale(0.97); }
+
+  #btn-playpause {
+    background: linear-gradient(135deg, var(--accent), #5b4dcc);
+    color: #fff;
+  }
+
+  #btn-reset {
+    background: var(--surface2);
+    color: var(--text2);
+    flex: 0 0 auto;
+    padding: 14px 18px;
+  }
+
+  /* ── Timer list ── */
+  #timer-list {
+    flex: 1;
+    padding: 4px 16px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .timer-item {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: grab;
+    border: 1.5px solid transparent;
+    transition: border-color 0.2s, background 0.2s, opacity 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .timer-item.active-item {
+    border-color: var(--accent);
+    background: var(--active-bg);
+  }
+
+  .timer-item.done-item {
+    opacity: 0.4;
+  }
+
+  .timer-item.dragging {
+    opacity: 0.3;
+    cursor: grabbing;
+  }
+
+  .timer-item.drag-over {
+    border-color: var(--accent2);
+    background: #1e1a2a;
+  }
+
+  .drag-handle {
+    color: var(--text2);
+    font-size: 18px;
+    padding: 0 2px;
+    flex-shrink: 0;
+    cursor: grab;
+  }
+
+  .timer-index {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text2);
+    flex-shrink: 0;
+  }
+
+  .timer-item.active-item .timer-index {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .timer-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .timer-label {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timer-duration {
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+
+  .item-remaining {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  .timer-item.active-item .item-remaining { color: var(--accent); }
+
+  .btn-delete {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 8px;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+
+  .btn-delete:active { color: var(--danger); background: #ff446622; }
+
+  /* ── Add form ── */
+  #add-section {
+    padding: 0 16px 32px;
+  }
+
+  #add-form {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .form-field label {
+    font-size: 11px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .form-field input {
+    background: var(--surface2);
+    border: 1.5px solid transparent;
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 15px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+
+  .form-field input:focus { border-color: var(--accent); }
+
+  .time-inputs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .time-inputs input {
+    width: 60px;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .time-sep {
+    color: var(--text2);
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  #btn-add {
+    background: linear-gradient(135deg, var(--accent), #5b4dcc);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  #btn-add:active { opacity: 0.75; }
+
+  /* ── Empty state ── */
+  #empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text2);
+  }
+
+  #empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  #empty-state p { font-size: 15px; }
+
+  /* ── Pulse animation for active ── */
+  @keyframes pulse-border {
+    0%, 100% { border-color: var(--accent); }
+    50% { border-color: var(--accent2); }
+  }
+
+  .timer-item.active-item {
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+
+  /* ── Scrollbar ── */
+  #timer-list::-webkit-scrollbar { width: 4px; }
+  #timer-list::-webkit-scrollbar-track { background: transparent; }
+  #timer-list::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Relay <span>Timer</span></h1>
+  <div id="total-time">合計 --:--</div>
+</header>
+
+<div id="active-display">
+  <div id="active-name">準備完了</div>
+  <div id="active-time">00:00</div>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+  <div id="queue-info"></div>
+</div>
+
+<div id="controls">
+  <button class="btn" id="btn-playpause">▶ 再生</button>
+  <button class="btn" id="btn-reset">↺ リセット</button>
+</div>
+
+<div id="timer-list">
+  <div id="empty-state">
+    <div class="icon">⏱</div>
+    <p>下のフォームからタイマーを追加してください</p>
+  </div>
+</div>
+
+<div id="add-section">
+  <div id="add-form">
+    <div class="form-row">
+      <div class="form-field" style="flex:2">
+        <label>タイマー名</label>
+        <input type="text" id="inp-name" placeholder="作業、休憩 など" maxlength="30">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-field">
+        <label>時間</label>
+        <div class="time-inputs">
+          <input type="number" id="inp-hour" placeholder="0" min="0" max="99" value="">
+          <span class="time-sep">:</span>
+          <input type="number" id="inp-min" placeholder="00" min="0" max="59" value="">
+          <span class="time-sep">:</span>
+          <input type="number" id="inp-sec" placeholder="00" min="0" max="59" value="">
+        </div>
+      </div>
+    </div>
+    <button id="btn-add">＋ 追加</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ── State ──
+  let timers = [];          // [{id, name, duration, remaining}]
+  let currentIndex = 0;
+  let running = false;
+  let paused = false;
+  let intervalId = null;
+  let dragSrc = null;
+  let audioCtx = null;
+
+  const elList      = document.getElementById('timer-list');
+  const elEmpty     = document.getElementById('empty-state');
+  const elDisplay   = document.getElementById('active-display');
+  const elName      = document.getElementById('active-name');
+  const elTime      = document.getElementById('active-time');
+  const elProgress  = document.getElementById('progress-bar');
+  const elQueue     = document.getElementById('queue-info');
+  const elBtnPlayPause = document.getElementById('btn-playpause');
+  const elBtnReset     = document.getElementById('btn-reset');
+  const elTotal     = document.getElementById('total-time');
+  const inpName     = document.getElementById('inp-name');
+  const inpHour     = document.getElementById('inp-hour');
+  const inpMin      = document.getElementById('inp-min');
+  const inpSec      = document.getElementById('inp-sec');
+
+  // ── Audio ──
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+
+  function alarm() {
+    try {
+      const ctx = getAudioCtx();
+      if (ctx.state === 'suspended') ctx.resume();
+      // 0.5s ON / 0.2s OFF × 7 bursts ≈ 5 seconds
+      const ON = 0.5, OFF = 0.2, CYCLE = ON + OFF, BURSTS = 7;
+      for (let i = 0; i < BURSTS; i++) {
+        const t = ctx.currentTime + i * CYCLE;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.8, t);
+        gain.gain.setValueAtTime(0.8, t + ON - 0.01);
+        gain.gain.linearRampToValueAtTime(0, t + ON);
+        osc.start(t);
+        osc.stop(t + ON);
+      }
+    } catch(e) {}
+  }
+
+  // ── Persistence ──
+  const STORAGE_KEY = 'relay-timer-v1';
+
+  function saveTimers() {
+    const data = timers.map(({ id, name, duration }) => ({ id, name, duration }));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+  }
+
+  function loadTimers() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data) || data.length === 0) return false;
+      timers = data
+        .filter(t => t.name && Number.isFinite(t.duration) && t.duration > 0)
+        .map(t => ({ id: t.id || uid(), name: t.name, duration: t.duration, remaining: t.duration }));
+      return timers.length > 0;
+    } catch(e) { return false; }
+  }
+
+  // ── Utils ──
+  function fmt(s) {
+    const abs = Math.abs(s);
+    const h = Math.floor(abs / 3600);
+    const m = Math.floor((abs % 3600) / 60).toString().padStart(2, '0');
+    const ss = (abs % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${ss}`;
+  }
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+  function totalDuration() { return timers.reduce((a, t) => a + t.duration, 0); }
+
+  // ── Render ──
+  function render() {
+    // Empty state
+    if (timers.length === 0) {
+      elEmpty.style.display = '';
+      elDisplay.classList.remove('visible');
+      elTotal.textContent = '合計 --:--';
+    } else {
+      elEmpty.style.display = 'none';
+      elTotal.textContent = `合計 ${fmt(totalDuration())}`;
+      if (running || paused) elDisplay.classList.add('visible');
+    }
+
+    // List items
+    const items = elList.querySelectorAll('.timer-item');
+    items.forEach(el => el.remove());
+
+    timers.forEach((t, i) => {
+      const div = document.createElement('div');
+      div.className = 'timer-item';
+      div.dataset.id = t.id;
+      div.dataset.index = i;
+      div.draggable = true;
+
+      if (running || paused) {
+        if (i === currentIndex) div.classList.add('active-item');
+        else if (i < currentIndex) div.classList.add('done-item');
+      }
+
+      const remaining = (running || paused) && i === currentIndex
+        ? t.remaining
+        : t.duration;
+
+      div.innerHTML = `
+        <span class="drag-handle">⠿</span>
+        <div class="timer-index">${i + 1}</div>
+        <div class="timer-info">
+          <div class="timer-label">${escHtml(t.name)}</div>
+          <div class="timer-duration">${fmt(t.duration)}</div>
+        </div>
+        <div class="item-remaining">${fmt(remaining)}</div>
+        <button class="btn-delete" data-id="${t.id}" aria-label="削除">×</button>
+      `;
+
+      // Drag events (desktop)
+      div.addEventListener('dragstart', onDragStart);
+      div.addEventListener('dragover', onDragOver);
+      div.addEventListener('dragleave', onDragLeave);
+      div.addEventListener('drop', onDrop);
+      div.addEventListener('dragend', onDragEnd);
+
+      // Touch drag
+      div.addEventListener('touchstart', onTouchStart, {passive: false});
+
+      // Delete button
+      div.querySelector('.btn-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteTimer(t.id);
+      });
+
+      elList.appendChild(div);
+    });
+
+    // Active display
+    if ((running || paused) && timers.length > 0) {
+      const cur = timers[currentIndex];
+      elName.textContent = cur.name;
+      elTime.textContent = fmt(cur.remaining);
+      elTime.classList.toggle('urgent', cur.remaining <= 5 && cur.remaining > 0);
+
+      const pct = (cur.remaining / cur.duration) * 100;
+      elProgress.style.width = pct + '%';
+
+      const next = currentIndex + 1 < timers.length
+        ? `次: ${timers[currentIndex + 1].name} (${fmt(timers[currentIndex + 1].duration)})`
+        : '次: 最初に戻る ↺';
+      elQueue.textContent = next;
+    }
+
+    // Buttons
+    elBtnPlayPause.textContent = running ? '⏸ 停止' : '▶ 再生';
+  }
+
+  function escHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ── Timer logic ──
+  function startTimer() {
+    if (timers.length === 0) return;
+    getAudioCtx();
+
+    if (!paused) {
+      currentIndex = 0;
+      timers.forEach(t => { t.remaining = t.duration; });
+    }
+
+    running = true;
+    paused = false;
+
+    elDisplay.classList.add('visible');
+    render();
+
+    intervalId = setInterval(tick, 1000);
+  }
+
+  function tick() {
+    if (!running) return;
+    const cur = timers[currentIndex];
+    cur.remaining--;
+
+    // Update just the active display + item remaining (no full re-render for perf)
+    elTime.textContent = fmt(cur.remaining);
+    elTime.classList.toggle('urgent', cur.remaining <= 5 && cur.remaining > 0);
+    const pct = (cur.remaining / cur.duration) * 100;
+    elProgress.style.width = pct + '%';
+
+    const activeItem = elList.querySelector('.timer-item.active-item');
+    if (activeItem) activeItem.querySelector('.item-remaining').textContent = fmt(cur.remaining);
+
+    if (cur.remaining <= 0) {
+      alarm();
+      advance();
+    }
+  }
+
+  function advance() {
+    currentIndex++;
+    if (currentIndex >= timers.length) {
+      // Loop back
+      currentIndex = 0;
+      timers.forEach(t => { t.remaining = t.duration; });
+    }
+    render();
+  }
+
+  function pauseTimer() {
+    running = false;
+    paused = true;
+    clearInterval(intervalId);
+    render();
+  }
+
+  function resetTimer() {
+    running = false;
+    paused = false;
+    clearInterval(intervalId);
+    currentIndex = 0;
+    timers.forEach(t => { t.remaining = t.duration; });
+    elDisplay.classList.remove('visible');
+    render();
+  }
+
+  // ── Timer CRUD ──
+  function addTimer(name, seconds) {
+    timers.push({ id: uid(), name, duration: seconds, remaining: seconds });
+    saveTimers();
+    render();
+  }
+
+  function deleteTimer(id) {
+    const idx = timers.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    if ((running || paused) && idx === currentIndex) resetTimer();
+    else if ((running || paused) && idx < currentIndex) currentIndex--;
+    timers.splice(idx, 1);
+    saveTimers();
+    render();
+  }
+
+  // ── Drag & drop (desktop) ──
+  function onDragStart(e) {
+    dragSrc = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.index);
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (this !== dragSrc) this.classList.add('drag-over');
+  }
+
+  function onDragLeave() { this.classList.remove('drag-over'); }
+
+  function onDrop(e) {
+    e.preventDefault();
+    if (this === dragSrc) return;
+    this.classList.remove('drag-over');
+    const from = parseInt(dragSrc.dataset.index);
+    const to   = parseInt(this.dataset.index);
+    const moved = timers.splice(from, 1)[0];
+    timers.splice(to, 0, moved);
+    if (running || paused) {
+      if (currentIndex === from) currentIndex = to;
+      else if (from < currentIndex && to >= currentIndex) currentIndex--;
+      else if (from > currentIndex && to <= currentIndex) currentIndex++;
+    }
+    saveTimers();
+    render();
+  }
+
+  function onDragEnd() {
+    this.classList.remove('dragging');
+    elList.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    dragSrc = null;
+  }
+
+  // ── Touch drag ──
+  let touchItem = null, touchClone = null, touchFromIdx = null;
+  let touchOffX = 0, touchOffY = 0;
+
+  function onTouchStart(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    e.preventDefault();
+
+    touchItem = this;
+    touchFromIdx = parseInt(this.dataset.index);
+
+    const rect = this.getBoundingClientRect();
+    const touch = e.touches[0];
+    touchOffX = touch.clientX - rect.left;
+    touchOffY = touch.clientY - rect.top;
+
+    // Clone for visual feedback
+    touchClone = this.cloneNode(true);
+    touchClone.style.cssText = `
+      position: fixed; left: ${rect.left}px; top: ${rect.top}px;
+      width: ${rect.width}px; opacity: 0.85; pointer-events: none;
+      z-index: 1000; border-radius: 16px;
+      background: #2a2a38; border: 1.5px solid var(--accent);
+      box-shadow: 0 8px 32px #0008;
+    `;
+    document.body.appendChild(touchClone);
+    this.classList.add('dragging');
+
+    document.addEventListener('touchmove', onTouchMove, {passive: false});
+    document.addEventListener('touchend', onTouchEnd);
+  }
+
+  function onTouchMove(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const x = touch.clientX - touchOffX;
+    const y = touch.clientY - touchOffY;
+    touchClone.style.left = x + 'px';
+    touchClone.style.top  = y + 'px';
+
+    // Find target
+    touchClone.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchClone.style.display = '';
+    const target = el && el.closest('.timer-item');
+
+    elList.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
+    if (target && target !== touchItem) target.classList.add('drag-over');
+  }
+
+  function onTouchEnd(e) {
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+
+    const touch = e.changedTouches[0];
+    touchClone.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchClone.style.display = '';
+    const target = el && el.closest('.timer-item');
+
+    if (touchClone) { touchClone.remove(); touchClone = null; }
+    if (touchItem)  { touchItem.classList.remove('dragging'); }
+    elList.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
+
+    if (target && target !== touchItem) {
+      const to = parseInt(target.dataset.index);
+      const from = touchFromIdx;
+      const moved = timers.splice(from, 1)[0];
+      timers.splice(to, 0, moved);
+      if (running || paused) {
+        if (currentIndex === from) currentIndex = to;
+        else if (from < currentIndex && to >= currentIndex) currentIndex--;
+        else if (from > currentIndex && to <= currentIndex) currentIndex++;
+      }
+      saveTimers();
+      render();
+    }
+
+    touchItem = null;
+    touchFromIdx = null;
+  }
+
+  // ── Form ──
+  document.getElementById('btn-add').addEventListener('click', () => {
+    const name = inpName.value.trim() || 'タイマー';
+    const h = parseInt(inpHour.value) || 0;
+    const m = parseInt(inpMin.value) || 0;
+    const s = parseInt(inpSec.value) || 0;
+    const total = h * 3600 + m * 60 + s;
+    if (total <= 0) {
+      inpHour.focus();
+      inpHour.style.borderColor = 'var(--danger)';
+      setTimeout(() => { inpHour.style.borderColor = ''; }, 1200);
+      return;
+    }
+    addTimer(name, total);
+    inpName.value = '';
+    inpHour.value = '';
+    inpMin.value = '';
+    inpSec.value = '';
+    inpName.focus();
+  });
+
+  // Enter key in form
+  [inpName, inpHour, inpMin, inpSec].forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-add').click();
+    });
+  });
+
+  // Clamp seconds input
+  inpSec.addEventListener('blur', () => {
+    if (inpSec.value > 59) inpSec.value = 59;
+  });
+
+  // ── Button events ──
+  elBtnPlayPause.addEventListener('click', () => {
+    if (running) pauseTimer();
+    else startTimer();
+  });
+  elBtnReset.addEventListener('click', resetTimer);
+
+  // ── Init ──
+  if (!loadTimers()) {
+    addTimer('作業', 25 * 60);
+    addTimer('短い休憩', 5 * 60);
+    addTimer('長い休憩', 15 * 60);
+  } else {
+    render();
+  }
+
+})();
+</script>
+</body>
+</html>
