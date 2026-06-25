@@ -174,10 +174,11 @@
     gap: 10px;
     cursor: grab;
     border: 1.5px solid transparent;
-    transition: border-color 0.2s, background 0.2s, opacity 0.2s;
+    transition: border-color 0.2s, background 0.2s, opacity 0.2s, transform 0.18s ease;
     -webkit-user-select: none;
     user-select: none;
     touch-action: none;
+    will-change: transform;
   }
 
   .timer-item.active-item {
@@ -194,9 +195,8 @@
     cursor: grabbing;
   }
 
-  .timer-item.drag-over {
-    border-color: var(--accent2);
-    background: #1e1a2a;
+  .timer-item.dragging {
+    cursor: grabbing;
   }
 
   .drag-handle {
@@ -375,13 +375,108 @@
   #timer-list::-webkit-scrollbar { width: 4px; }
   #timer-list::-webkit-scrollbar-track { background: transparent; }
   #timer-list::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+
+  /* ── Time input with label ── */
+  .time-input-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .time-input-wrap input {
+    width: 60px;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .time-label {
+    font-size: 11px;
+    color: var(--text2);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    line-height: 1;
+  }
+
+  /* ── Edit modal ── */
+  #edit-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  #edit-modal.open { display: flex; }
+
+  #edit-modal-inner {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    padding: 24px 16px 32px;
+    width: 100%;
+    max-width: 430px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation: slideUp 0.2s ease-out;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  #edit-modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+
+  .edit-modal-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  #edit-modal-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  #btn-edit-cancel {
+    flex: 1;
+    padding: 13px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--surface2);
+    color: var(--text2);
+  }
+
+  #btn-edit-save {
+    flex: 2;
+    padding: 13px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), #5b4dcc);
+    color: #fff;
+  }
 </style>
 </head>
 <body>
 
 <header>
   <h1>Relay <span>Timer</span></h1>
-  <div id="total-time">合計 --:--</div>
+  <div id="total-time">Total --:--</div>
 </header>
 
 <div id="active-display">
@@ -392,8 +487,8 @@
 </div>
 
 <div id="controls">
-  <button class="btn" id="btn-playpause">▶ 再生</button>
-  <button class="btn" id="btn-reset">↺ リセット</button>
+  <button class="btn" id="btn-playpause">▶ Play</button>
+  <button class="btn" id="btn-reset">↺ Reset</button>
 </div>
 
 <div id="timer-list">
@@ -407,23 +502,70 @@
   <div id="add-form">
     <div class="form-row">
       <div class="form-field" style="flex:2">
-        <label>タイマー名</label>
-        <input type="text" id="inp-name" placeholder="作業、休憩 など" maxlength="30">
+        <label>Name</label>
+        <input type="text" id="inp-name" placeholder="Work, Break, etc." maxlength="30">
       </div>
     </div>
     <div class="form-row">
       <div class="form-field">
-        <label>時間</label>
+        <label>Time</label>
         <div class="time-inputs">
-          <input type="number" id="inp-hour" placeholder="0" min="0" max="99" value="">
+          <div class="time-input-wrap">
+            <input type="number" id="inp-hour" placeholder="0" min="0" max="99" value="">
+            <span class="time-label">h</span>
+          </div>
           <span class="time-sep">:</span>
-          <input type="number" id="inp-min" placeholder="00" min="0" max="59" value="">
+          <div class="time-input-wrap">
+            <input type="number" id="inp-min" placeholder="00" min="0" max="59" value="">
+            <span class="time-label">m</span>
+          </div>
           <span class="time-sep">:</span>
-          <input type="number" id="inp-sec" placeholder="00" min="0" max="59" value="">
+          <div class="time-input-wrap">
+            <input type="number" id="inp-sec" placeholder="00" min="0" max="59" value="">
+            <span class="time-label">s</span>
+          </div>
         </div>
       </div>
     </div>
     <button id="btn-add">＋ 追加</button>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal">
+  <div id="edit-modal-inner">
+    <div id="edit-modal-title">Edit timer</div>
+    <div class="edit-modal-row">
+      <div class="form-field" style="flex:1">
+        <label>NAME</label>
+        <input type="text" id="edit-inp-name" placeholder="Name" maxlength="30">
+      </div>
+    </div>
+    <div class="edit-modal-row">
+      <div class="form-field">
+        <label>Time</label>
+        <div class="time-inputs">
+          <div class="time-input-wrap">
+            <input type="number" id="edit-inp-hour" placeholder="0" min="0" max="99">
+            <span class="time-label">h</span>
+          </div>
+          <span class="time-sep">:</span>
+          <div class="time-input-wrap">
+            <input type="number" id="edit-inp-min" placeholder="00" min="0" max="59">
+            <span class="time-label">m</span>
+          </div>
+          <span class="time-sep">:</span>
+          <div class="time-input-wrap">
+            <input type="number" id="edit-inp-sec" placeholder="00" min="0" max="59">
+            <span class="time-label">s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="edit-modal-btns">
+      <button id="btn-edit-cancel">キャンセル</button>
+      <button id="btn-edit-save">保存</button>
+    </div>
   </div>
 </div>
 
@@ -435,8 +577,18 @@
   let running = false;
   let paused = false;
   let intervalId = null;
-  let dragSrc = null;
+  let dragFromIdx = null;
+  let insertDropIdx = null;
+  let dragItemH = 0;
+  let origTops = [];
   let audioCtx = null;
+
+  const elEditModal  = document.getElementById('edit-modal');
+  const editInpName  = document.getElementById('edit-inp-name');
+  const editInpHour  = document.getElementById('edit-inp-hour');
+  const editInpMin   = document.getElementById('edit-inp-min');
+  const editInpSec   = document.getElementById('edit-inp-sec');
+  let editingId = null;
 
   const elList      = document.getElementById('timer-list');
   const elEmpty     = document.getElementById('empty-state');
@@ -522,10 +674,10 @@
     if (timers.length === 0) {
       elEmpty.style.display = '';
       elDisplay.classList.remove('visible');
-      elTotal.textContent = '合計 --:--';
+      elTotal.textContent = 'Total --:--';
     } else {
       elEmpty.style.display = 'none';
-      elTotal.textContent = `合計 ${fmt(totalDuration())}`;
+      elTotal.textContent = `Total ${fmt(totalDuration())}`;
       if (running || paused) elDisplay.classList.add('visible');
     }
 
@@ -562,9 +714,6 @@
 
       // Drag events (desktop)
       div.addEventListener('dragstart', onDragStart);
-      div.addEventListener('dragover', onDragOver);
-      div.addEventListener('dragleave', onDragLeave);
-      div.addEventListener('drop', onDrop);
       div.addEventListener('dragend', onDragEnd);
 
       // Touch drag
@@ -574,6 +723,12 @@
       div.querySelector('.btn-delete').addEventListener('click', (e) => {
         e.stopPropagation();
         deleteTimer(t.id);
+      });
+
+      // Tap to edit (ignore drag handle and delete button)
+      div.addEventListener('click', (e) => {
+        if (e.target.closest('.drag-handle') || e.target.closest('.btn-delete')) return;
+        openEditModal(t.id);
       });
 
       elList.appendChild(div);
@@ -590,13 +745,13 @@
       elProgress.style.width = pct + '%';
 
       const next = currentIndex + 1 < timers.length
-        ? `次: ${timers[currentIndex + 1].name} (${fmt(timers[currentIndex + 1].duration)})`
-        : '次: 最初に戻る ↺';
+        ? `Next: ${timers[currentIndex + 1].name} (${fmt(timers[currentIndex + 1].duration)})`
+        : 'Next: Back to start ↺';
       elQueue.textContent = next;
     }
 
     // Buttons
-    elBtnPlayPause.textContent = running ? '⏸ 停止' : '▶ 再生';
+    elBtnPlayPause.textContent = running ? '⏸ Pause' : '▶ Play';
   }
 
   function escHtml(s) {
@@ -676,6 +831,54 @@
     render();
   }
 
+  function openEditModal(id) {
+    const t = timers.find(t => t.id === id);
+    if (!t) return;
+    editingId = id;
+    editInpName.value = t.name;
+    editInpHour.value = Math.floor(t.duration / 3600) || '';
+    editInpMin.value  = Math.floor((t.duration % 3600) / 60) || '';
+    editInpSec.value  = (t.duration % 60) || '';
+    elEditModal.classList.add('open');
+    editInpName.focus();
+  }
+
+  function closeEditModal() {
+    elEditModal.classList.remove('open');
+    editingId = null;
+  }
+
+  function saveEdit() {
+    if (!editingId) return;
+    const t = timers.find(t => t.id === editingId);
+    if (!t) return;
+    const name = editInpName.value.trim() || t.name;
+    const h = parseInt(editInpHour.value) || 0;
+    const m = parseInt(editInpMin.value)  || 0;
+    const s = parseInt(editInpSec.value)  || 0;
+    const total = h * 3600 + m * 60 + s;
+    if (total <= 0) {
+      editInpHour.style.borderColor = 'var(--danger)';
+      setTimeout(() => { editInpHour.style.borderColor = ''; }, 1200);
+      return;
+    }
+    const wasActive = (running || paused) && timers.indexOf(t) === currentIndex;
+    t.name = name;
+    t.duration = total;
+    if (wasActive) t.remaining = Math.min(t.remaining, total);
+    else t.remaining = total;
+    saveTimers();
+    closeEditModal();
+    render();
+  }
+
+  document.getElementById('btn-edit-save').addEventListener('click', saveEdit);
+  document.getElementById('btn-edit-cancel').addEventListener('click', closeEditModal);
+  elEditModal.addEventListener('click', e => { if (e.target === elEditModal) closeEditModal(); });
+  [editInpName, editInpHour, editInpMin, editInpSec].forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') closeEditModal(); });
+  });
+
   function deleteTimer(id) {
     const idx = timers.findIndex(t => t.id === id);
     if (idx === -1) return;
@@ -686,46 +889,98 @@
     render();
   }
 
-  // ── Drag & drop (desktop) ──
+  // ── Drag & drop (desktop) — insertion style ──
+  function calcInsertDropIdx(cursorY) {
+    const n = timers.length;
+    for (let i = 0; i < n; i++) {
+      if (i === dragFromIdx) continue;
+      if (cursorY < origTops[i] + dragItemH / 2) {
+        return i < dragFromIdx ? i : i - 1;
+      }
+    }
+    return n - 1;
+  }
+
+  function applyInsertTransforms() {
+    const items = [...elList.querySelectorAll('.timer-item')];
+    items.forEach((el, i) => {
+      if (i === dragFromIdx) return;
+      const ri = i < dragFromIdx ? i : i - 1;
+      const fi = ri < insertDropIdx ? ri : ri + 1;
+      el.style.transform = `translateY(${(fi - i) * (dragItemH + 8)}px)`;
+    });
+  }
+
+  function clearInsertTransforms() {
+    elList.querySelectorAll('.timer-item').forEach(el => {
+      el.style.transform = '';
+      el.style.opacity = '';
+    });
+  }
+
+  function applyDrop() {
+    const from = dragFromIdx;
+    const to = insertDropIdx;
+    clearInsertTransforms();
+    const moved = timers.splice(from, 1)[0];
+    timers.splice(to, 0, moved);
+    if (running || paused) {
+      if (currentIndex === from) {
+        currentIndex = to;
+      } else {
+        let ci = currentIndex;
+        if (ci > from) ci--;
+        if (ci >= to) ci++;
+        currentIndex = ci;
+      }
+    }
+    saveTimers();
+    render();
+    dragFromIdx = null;
+    insertDropIdx = null;
+  }
+
   function onDragStart(e) {
-    dragSrc = this;
-    this.classList.add('dragging');
+    dragFromIdx = parseInt(this.dataset.index);
+    dragItemH = this.getBoundingClientRect().height;
+    origTops = [...elList.querySelectorAll('.timer-item')].map(el => el.getBoundingClientRect().top);
+    insertDropIdx = dragFromIdx;
+    this.style.opacity = '0.3';
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', this.dataset.index);
   }
 
-  function onDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (this !== dragSrc) this.classList.add('drag-over');
-  }
-
-  function onDragLeave() { this.classList.remove('drag-over'); }
-
-  function onDrop(e) {
-    e.preventDefault();
-    if (this === dragSrc) return;
-    this.classList.remove('drag-over');
-    const from = parseInt(dragSrc.dataset.index);
-    const to   = parseInt(this.dataset.index);
-    const moved = timers.splice(from, 1)[0];
-    timers.splice(to, 0, moved);
-    if (running || paused) {
-      if (currentIndex === from) currentIndex = to;
-      else if (from < currentIndex && to >= currentIndex) currentIndex--;
-      else if (from > currentIndex && to <= currentIndex) currentIndex++;
-    }
-    saveTimers();
-    render();
-  }
-
   function onDragEnd() {
-    this.classList.remove('dragging');
-    elList.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-    dragSrc = null;
+    clearInsertTransforms();
+    dragFromIdx = null;
+    insertDropIdx = null;
   }
 
-  // ── Touch drag ──
+  elList.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (dragFromIdx === null) return;
+    e.dataTransfer.dropEffect = 'move';
+    const newIdx = calcInsertDropIdx(e.clientY);
+    if (newIdx !== insertDropIdx) {
+      insertDropIdx = newIdx;
+      applyInsertTransforms();
+    }
+  });
+
+  elList.addEventListener('drop', e => {
+    e.preventDefault();
+    if (dragFromIdx === null) return;
+    applyDrop();
+  });
+
+  elList.addEventListener('dragleave', e => {
+    if (!elList.contains(e.relatedTarget)) {
+      clearInsertTransforms();
+      insertDropIdx = dragFromIdx;
+    }
+  });
+
+  // ── Touch drag — insertion style ──
   let touchItem = null, touchClone = null, touchFromIdx = null;
   let touchOffX = 0, touchOffY = 0;
 
@@ -736,13 +991,16 @@
 
     touchItem = this;
     touchFromIdx = parseInt(this.dataset.index);
+    dragFromIdx = touchFromIdx;
+    dragItemH = this.getBoundingClientRect().height;
+    origTops = [...elList.querySelectorAll('.timer-item')].map(el => el.getBoundingClientRect().top);
+    insertDropIdx = touchFromIdx;
 
     const rect = this.getBoundingClientRect();
     const touch = e.touches[0];
     touchOffX = touch.clientX - rect.left;
     touchOffY = touch.clientY - rect.top;
 
-    // Clone for visual feedback
     touchClone = this.cloneNode(true);
     touchClone.style.cssText = `
       position: fixed; left: ${rect.left}px; top: ${rect.top}px;
@@ -752,7 +1010,7 @@
       box-shadow: 0 8px 32px #0008;
     `;
     document.body.appendChild(touchClone);
-    this.classList.add('dragging');
+    this.style.opacity = '0.3';
 
     document.addEventListener('touchmove', onTouchMove, {passive: false});
     document.addEventListener('touchend', onTouchEnd);
@@ -761,49 +1019,21 @@
   function onTouchMove(e) {
     e.preventDefault();
     const touch = e.touches[0];
-    const x = touch.clientX - touchOffX;
-    const y = touch.clientY - touchOffY;
-    touchClone.style.left = x + 'px';
-    touchClone.style.top  = y + 'px';
+    touchClone.style.left = (touch.clientX - touchOffX) + 'px';
+    touchClone.style.top  = (touch.clientY - touchOffY) + 'px';
 
-    // Find target
-    touchClone.style.display = 'none';
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    touchClone.style.display = '';
-    const target = el && el.closest('.timer-item');
-
-    elList.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
-    if (target && target !== touchItem) target.classList.add('drag-over');
+    const newIdx = calcInsertDropIdx(touch.clientY);
+    if (newIdx !== insertDropIdx) {
+      insertDropIdx = newIdx;
+      applyInsertTransforms();
+    }
   }
 
-  function onTouchEnd(e) {
+  function onTouchEnd() {
     document.removeEventListener('touchmove', onTouchMove);
     document.removeEventListener('touchend', onTouchEnd);
-
-    const touch = e.changedTouches[0];
-    touchClone.style.display = 'none';
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    touchClone.style.display = '';
-    const target = el && el.closest('.timer-item');
-
     if (touchClone) { touchClone.remove(); touchClone = null; }
-    if (touchItem)  { touchItem.classList.remove('dragging'); }
-    elList.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
-
-    if (target && target !== touchItem) {
-      const to = parseInt(target.dataset.index);
-      const from = touchFromIdx;
-      const moved = timers.splice(from, 1)[0];
-      timers.splice(to, 0, moved);
-      if (running || paused) {
-        if (currentIndex === from) currentIndex = to;
-        else if (from < currentIndex && to >= currentIndex) currentIndex--;
-        else if (from > currentIndex && to <= currentIndex) currentIndex++;
-      }
-      saveTimers();
-      render();
-    }
-
+    applyDrop();
     touchItem = null;
     touchFromIdx = null;
   }
